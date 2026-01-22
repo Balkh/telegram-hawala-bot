@@ -1,6 +1,23 @@
-.env
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+env/
+venv/
+.env
+
+# Databases / local files
 *.db
+hawala.db
+
+# VSCode
 .vscode/
-.idea/
+
+# Byte-compiled / coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# macOS
+.DS_Store
