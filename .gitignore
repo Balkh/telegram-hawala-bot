@@ -1,6 +1,15 @@
+# virtualenv
+venv/
 .env
+
+# database
+hawala.db
+*.sqlite3
+
+# python cache
 __pycache__/
 *.pyc
-*.db
+
+# IDE
 .vscode/
 .idea/
