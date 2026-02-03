@@ -30,6 +30,9 @@ async def admin_login_username(update, context):
     return ADMIN_PASSWORD
 
 
+# بعد از خط 31 (بعد از bind_admin_telegram_id):
+
+
 async def admin_login_password(update, context):
     password = update.message.text
     admin = context.user_data["admin"]
@@ -38,10 +41,27 @@ async def admin_login_password(update, context):
         await update.message.reply_text("❌ پسورد اشتباه است")
         return ConversationHandler.END
 
+    # ذخیره telegram_id در دیتابیس
     bind_admin_telegram_id(
         admin_id=admin["id"],
         telegram_id=update.effective_user.id,
     )
 
+    # ✅ اضافه کردن این بخش:
+    # 1. ذخیره اطلاعات ادمین در context
+    context.user_data["admin_id"] = admin["id"]
+    context.user_data["role"] = "admin"
+    context.user_data["admin_data"] = admin  # کل اطلاعات ادمین
+
+    # 2. پاک کردن داده‌های موقت
+    context.user_data.pop("admin", None)
+
+    # 3. نمایش پیام موفقیت
     await update.message.reply_text("✅ ورود ادمین با موفقیت انجام شد 👑")
+
+    # 4. نمایش منوی ادمین
+    from bot.handlers.admin import admin_menu
+
+    await admin_menu(update, context)
+
     return ConversationHandler.END

@@ -1,5 +1,12 @@
-# bot/handlers/admin.py
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove
+import datetime
+
+from telegram import (
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,  # اضافه شد
+)
 from telegram.ext import ConversationHandler
 import logging
 
@@ -10,7 +17,7 @@ from bot.services.auth import require_admin
 
 logger = logging.getLogger(__name__)
 
-# حالت‌های مکالمه - اصلاح شده: همه در یک رنج
+# حالت‌های مکالمه
 (
     NAME,
     PASSWORD,
@@ -21,7 +28,7 @@ logger = logging.getLogger(__name__)
     BALANCE,
     CURRENCY,
     CONFIRM_AGENT,
-    TOGGLE_AGENT,  # منتقل شده به اینجا
+    TOGGLE_AGENT,
 ) = range(10)
 
 # =======================
@@ -31,9 +38,10 @@ logger = logging.getLogger(__name__)
 
 @require_admin
 async def admin_menu(update, context):
+    """منوی ادمین برای Messageهای معمولی"""
     keyboard = [
         ["➕ ایجاد عامل", "📋 لیست عامل‌ها"],
-        ["⛔ فعال / غیرفعال عامل"],
+        ["⛔ فعال / غیرفعال عامل", "📊 گزارش مالی"],  # 🔴 دکمه گزارش مالی اضافه شد
         ["🚪 خروج"],
     ]
 
@@ -43,20 +51,76 @@ async def admin_menu(update, context):
     )
 
 
+# @require_admin
+# async def admin_menu_inline(update, context):
+#     """منوی ادمین برای CallbackQuery (Inline)"""
+#     keyboard = [
+#         [
+#             InlineKeyboardButton("➕ ایجاد عامل", callback_data="admin:create_agent"),
+#             InlineKeyboardButton("📋 لیست عامل‌ها", callback_data="admin:list_agents"),
+#         ],
+#         [
+#             InlineKeyboardButton("⛔ فعال/غیرفعال", callback_data="admin:toggle_agent"),
+#             InlineKeyboardButton(
+#                 "📊 گزارش مالی", callback_data="admin:financial_report"
+#             ),
+#         ],
+#         [
+#             InlineKeyboardButton("🚪 خروج", callback_data="admin:logout"),
+#         ],
+#     ]
+
+#     text = "👑 *منوی ادمین*\n\nلطفاً یک گزینه را انتخاب کنید:"
+
+#     # تشخیص نوع update
+#     if update.callback_query:
+#         message = update.callback_query.message
+#         use_edit = True
+#     else:
+#         message = update.message
+#         use_edit = False
+
+#     if use_edit:
+#         await message.edit_text(
+#             text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard)
+#         )
+#     else:
+#         await message.reply_text(
+#             text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard)
+#         )
+
+
 @require_admin
 async def admin_logout(update, context):
-    context.user_data.pop("admin_id", None)
-    await update.message.reply_text("🚪 از حساب ادمین خارج شدید\n/start")
+    """خروج ادمین"""
+    user_id = update.effective_user.id
+
+    # استفاده از تابع جدید
+    from bot.services.database import unbind_admin_telegram_id
+
+    unbind_admin_telegram_id(user_id)
+
+    # پاک کردن context
+    context.user_data.clear()
+
+    await update.message.reply_text(
+        "🚪 از حساب ادمین خارج شدید.", reply_markup=ReplyKeyboardRemove()
+    )
+
+    # برگشت به منوی اصلی
+    from bot.handlers.start import start
+
+    await start(update, context)
 
 
 # =======================
 # ➕ شروع ایجاد عامل
 # =======================
+
+
 @require_admin
 async def create_agent_start(update, context):
-    """
-    شروع فرآیند ایجاد عامل توسط ادمین
-    """
+    """شروع فرآیند ایجاد عامل توسط ادمین"""
     context.user_data.clear()
     await update.message.reply_text("🧑‍💼 نام عامل را وارد کنید:")
     return NAME
@@ -90,7 +154,7 @@ async def confirm_password(update, context):
 
     if confirm != context.user_data["temp_password"]:
         await update.message.reply_text(
-            "❌ پسوردها یکسان نیست\n" "🔐 لطفاً دوباره پسورد را وارد کنید:"
+            "❌ پسوردها یکسان نیست\n🔐 لطفاً دوباره پسورد را وارد کنید:"
         )
         return PASSWORD
 
@@ -135,7 +199,7 @@ async def get_tazkira(update, context):
     # 1️⃣ اعتبارسنجی اولیه (فقط عدد)
     if not tazkira.isdigit():
         await update.message.reply_text(
-            "❌ شماره تذکره باید فقط عدد باشد\n" "لطفاً دوباره وارد کنید:"
+            "❌ شماره تذکره باید فقط عدد باشد\nلطفاً دوباره وارد کنید:"
         )
         return TAZKIRA
 
@@ -151,7 +215,7 @@ async def get_tazkira(update, context):
 
         if exists:
             await update.message.reply_text(
-                "❌ این شماره تذکره قبلاً ثبت شده\n" "🏠 برای بازگشت /start"
+                "❌ این شماره تذکره قبلاً ثبت شده\n🏠 برای بازگشت /start"
             )
             return ConversationHandler.END
 
@@ -203,7 +267,7 @@ async def get_balance(update, context):
 
 @require_admin
 async def get_currency(update, context):
-    """دریافت ارز از کاربر - این تابع جا افتاده بود!"""
+    """دریافت ارز از کاربر"""
     message_text = update.message.text.strip().upper()
 
     if "AFN" in message_text:
@@ -248,13 +312,26 @@ async def confirm_agent(update, context):
 
     if text == "❌ لغو":
         context.user_data.clear()
-        await update.message.reply_text("❌ عملیات لغو شد\n🏠 /start")
+        await update.message.reply_text(
+            "❌ عملیات لغو شد", reply_markup=ReplyKeyboardRemove()
+        )
+        # برگشت به منوی اصلی
+        from bot.handlers.start import start
+
+        await start(update, context)
         return ConversationHandler.END
 
     if text != "✅ تأیید":
-        await update.message.reply_text("❗ لطفاً یکی از دکمه‌ها را انتخاب کنید")
-        return CONFIRM_AGENT
+        await update.message.reply_text(
+            "❗ عملیات لغو شد. لطفاً مجدداً اقدام کنید",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        from bot.handlers.start import start
 
+        await start(update, context)
+        return ConversationHandler.END
+
+    # اگر تأیید کرد
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -295,36 +372,170 @@ async def confirm_agent(update, context):
         context.user_data.clear()
 
         await update.message.reply_text(
-            f"✅ عامل با موفقیت ثبت شد\n" f"🆔 کد عامل: {agent_id}\n" f"🏠 /start"
+            f"✅ عامل با موفقیت ثبت شد\n🆔 کد عامل: {agent_id}",
+            reply_markup=ReplyKeyboardRemove(),
         )
+        from bot.handlers.start import start
+
+        await start(update, context)
         return ConversationHandler.END
 
     except Exception as e:
         logger.exception("Error in confirm_agent")
-        await update.message.reply_text("❌ خطا هنگام ثبت عامل\n🏠 /start")
+        await update.message.reply_text(
+            "❌ خطا هنگام ثبت عامل", reply_markup=ReplyKeyboardRemove()
+        )
+        from bot.handlers.start import start
+
+        await start(update, context)
         return ConversationHandler.END
 
 
 @require_admin
-async def list_agents(update, context):
+async def financial_report(update, context):
+    """گزارش مالی ساده"""
 
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, name, province, is_active FROM agents")
+    # آمار عامل‌ها
+    cur.execute("SELECT COUNT(*) FROM agents")
+    total_agents = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM agents WHERE is_active = 1")
+    active_agents = cur.fetchone()[0]
+
+    # موجودی‌ها
+    cur.execute(
+        """
+        SELECT 
+            currency,
+            SUM(balance) as total_balance,
+            COUNT(*) as account_count
+        FROM balances 
+        GROUP BY currency
+    """
+    )
+
+    balances = cur.fetchall()
+
+    conn.close()
+
+    # ساخت گزارش
+    report = "📊 *گزارش مالی سیستم*\n"
+    report += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n"
+
+    report += f"👥 *عامل‌ها:*\n"
+    report += f"   کل عامل‌ها: {total_agents} نفر\n"
+    report += f"   فعال: {active_agents} نفر\n"
+    report += f"   غیرفعال: {total_agents - active_agents} نفر\n\n"
+
+    report += f"💰 *موجودی‌ها:*\n"
+    if balances:
+        for currency, total, count in balances:
+            report += f"   {currency}: {total:,.0f} ({count} حساب)\n"
+    else:
+        report += "   هیچ موجودی ثبت نشده\n\n"
+
+    report += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+    report += f"📅 تاریخ: {datetime.datetime.now().strftime('%Y/%m/%d %H:%M')}"
+
+    await update.message.reply_text(report, parse_mode="Markdown")
+
+
+@require_admin
+async def list_agents(update, context):
+    """نمایش لیست عامل‌ها - پشتیبانی از Message و CallbackQuery"""
+
+    # تشخیص نوع update
+    if update.callback_query:
+        message = update.callback_query.message
+        is_callback = True
+    else:
+        message = update.message
+        is_callback = False
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT a.id, a.name, a.province, a.phone, a.is_active,
+               b.balance, b.currency
+        FROM agents a
+        LEFT JOIN balances b ON a.id = b.agent_id
+        ORDER BY a.id
+        """
+    )
+
     agents = cur.fetchall()
     conn.close()
 
     if not agents:
-        await update.message.reply_text("📭 هیچ عاملی ثبت نشده")
+        if is_callback:
+            await message.edit_text("📭 هنوز هیچ عاملی ثبت نشده است")
+        else:
+            await message.reply_text("📭 هنوز هیچ عاملی ثبت نشده است")
         return
 
-    text = "📋 لیست عامل‌ها:\n\n"
-    for agent_id, name, province, is_active in agents:
-        status = "✅ فعال" if is_active else "⛔ غیرفعال"
-        text += f"🆔 {agent_id} | {name} | {province} | {status}\n"
+    # ساخت لیست
+    lines = []
+    active_count = 0
 
-    await update.message.reply_text(text)
+    for agent in agents:
+        agent_id, name, province, phone, is_active, balance, currency = agent
+
+        if is_active:
+            active_count += 1
+
+        status = "🟢" if is_active else "🔴"
+        balance_display = f"{balance:,.0f}" if balance is not None else "۰"
+        currency_display = currency if currency else "افغانی"
+
+        line = (
+            f"{status} `#{agent_id:03d}` | **{name}**\n"
+            f"   📍 {province} | 📞 `{phone}`\n"
+            f"   💰 {balance_display} {currency_display}"
+        )
+        lines.append(line)
+
+    # سرتیتر
+    header = "📋 *لیست عامل‌های حواله*\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n"
+
+    # محاسبات
+    current_time = datetime.datetime.now().strftime("%H:%M:%S")
+    inactive_count = len(agents) - active_count
+
+    # پاورقی
+    footer = (
+        f"\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        f"📊 *آمار:* {len(agents)} عامل | "
+        f"🟢 {active_count} فعال | "
+        f"🔴 {inactive_count} غیرفعال\n"
+        f"🕒 آخرین بروزرسانی: {current_time}"
+    )
+
+    full_text = header + "\n\n".join(lines) + footer
+
+    # دکمه‌ها
+    keyboard = [
+        [
+            InlineKeyboardButton("🔄 بروزرسانی", callback_data="refresh_agents"),
+            InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_menu"),
+        ]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # ارسال/ویرایش
+    if is_callback:
+        await message.edit_text(
+            full_text, parse_mode="Markdown", reply_markup=reply_markup
+        )
+    else:
+        await message.reply_text(
+            full_text, parse_mode="Markdown", reply_markup=reply_markup
+        )
 
 
 @require_admin
@@ -361,15 +572,132 @@ async def toggle_agent_by_id(update, context):
 
         status_text = "✅ فعال شد" if new_status else "⛔ غیرفعال شد"
         await update.message.reply_text(
-            f"🔄 وضعیت عامل با شناسه {agent_id} {status_text}\n🏠 /start"
+            f"🔄 وضعیت عامل با شناسه {agent_id} {status_text}"
         )
+
+        # برگشت به منوی اصلی
+        from bot.handlers.start import start
+
+        await start(update, context)
 
         return ConversationHandler.END
 
     except ValueError:
-        await update.message.reply_text("❌ شناسه باید عدد باشد\n🏠 /start")
+        await update.message.reply_text("❌ شناسه باید عدد باشد")
+        from bot.handlers.start import start
+
+        await start(update, context)
         return ConversationHandler.END
     except Exception as e:
         logger.exception("Error in toggle_agent_by_id")
         await global_error_handler(update, context, "❌ خطا در تغییر وضعیت عامل")
+        from bot.handlers.start import start
+
+        await start(update, context)
         return ConversationHandler.END
+
+
+async def handle_agents_callback(update, context):
+    """مدیریت کلیک روی دکمه‌های لیست عامل‌ها"""
+
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    if data == "refresh_agents":
+        await query.edit_message_text("🔄 در حال بروزرسانی لیست...", reply_markup=None)
+        await list_agents(update, context)
+
+    elif data == "back_to_menu":
+        # 🔴 تغییر مهم: به admin_menu برمی‌گردیم (نه admin_menu_inline)
+        await query.edit_message_text(
+            "🏠 در حال بازگشت به منوی اصلی...", reply_markup=None
+        )
+
+        # ساخت update جعلی برای admin_menu
+        from telegram import Update
+
+        fake_update = Update(update_id=update.update_id, message=query.message)
+
+        await admin_menu(fake_update, context)  # ✅ به منوی اصلی
+
+
+# async def handle_admin_callback(update, context):
+#     query = update.callback_query
+#     await query.answer()
+
+#     data = query.data
+
+#     logger.info(f"Admin callback: {data}")
+
+#     # حذف پیشوند "admin:"
+#     action = data.replace("admin:", "")
+
+#     if action == "list_agents":
+#         await query.edit_message_text(
+#             "📋 در حال بارگذاری لیست عامل‌ها...", reply_markup=None
+#         )
+#         await list_agents(update, context)
+
+#     elif action == "create_agent":
+#         # هدایت به ایجاد عامل
+#         await query.edit_message_text(
+#             "➕ *ایجاد عامل جدید*\n\n"
+#             "برای ایجاد عامل، لطفاً از منوی اصلی ادمین استفاده کنید:\n"
+#             "1. دستور /start را بزنید\n"
+#             "2. منوی ادمین را انتخاب کنید\n"
+#             "3. گزینه '➕ ایجاد عامل' را انتخاب کنید",
+#             parse_mode="Markdown",
+#             reply_markup=None,
+#         )
+
+#     elif action == "toggle_agent":
+#         await query.edit_message_text("⛔ در حال انتقال...", reply_markup=None)
+
+#         # ساخت update جعلی با message برای toggle_agent_start
+#         fake_update = Update(update_id=update.update_id, message=query.message)
+
+#         await toggle_agent_start(fake_update, context)
+
+#     elif action == "financial_report":
+#         # گزارش مالی ساده
+#         conn = get_db()
+#         cur = conn.cursor()
+
+#         cur.execute("SELECT COUNT(*) FROM agents")
+#         agent_count = cur.fetchone()[0]
+
+#         cur.execute("SELECT SUM(balance) FROM balances")
+#         total_balance = cur.fetchone()[0] or 0
+
+#         cur.execute("SELECT COUNT(*) FROM agents WHERE is_active = 1")
+#         active_agents = cur.fetchone()[0]
+
+#         conn.close()
+
+#         await query.edit_message_text(
+#             f"📊 *گزارش مالی*\n\n"
+#             f"📈 آمار کلی سیستم:\n"
+#             f"• تعداد عامل‌ها: {agent_count} نفر\n"
+#             f"• عامل‌های فعال: {active_agents} نفر\n"
+#             f"• مجموع موجودی: {total_balance:,.0f} افغانی\n\n"
+#             f"🔄 گزارش‌های پیشرفته به زودی اضافه می‌شوند.",
+#             parse_mode="Markdown",
+#             reply_markup=InlineKeyboardMarkup(
+#                 [[InlineKeyboardButton("🔙 بازگشت", callback_data="admin:back")]]
+#             ),
+#         )
+
+#     elif action == "logout":
+#         await query.edit_message_text("🚪 در حال خروج...", reply_markup=None)
+
+#         # ساخت update جعلی برای exit_menu
+#         fake_update = Update(update_id=update.update_id, message=query.message)
+
+#         from bot.handlers.common import exit_menu
+
+#         await exit_menu(fake_update, context)
+
+#     elif action == "back":
+#         await admin_menu_inline(update, context)

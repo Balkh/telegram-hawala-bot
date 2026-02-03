@@ -58,6 +58,30 @@ def init_db():
         """
     )
 
+    # جدول حواله‌ها
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            transaction_code VARCHAR(10) UNIQUE,
+            agent_id INTEGER,
+            receiver_agent_id INTEGER,
+            sender_name TEXT,
+            receiver_name TEXT,
+            receiver_tazkira TEXT,
+            amount REAL,
+            currency TEXT,
+            commission REAL,
+            status TEXT DEFAULT 'pending',
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed_at DATETIME,
+            FOREIGN KEY (agent_id) REFERENCES agents(id),
+            FOREIGN KEY (receiver_agent_id) REFERENCES agents(id)
+        )
+    """
+    )
+
     conn.commit()
     conn.close()
 
@@ -234,6 +258,234 @@ def unbind_telegram_id(telegram_id: int):
     cur.execute(
         "UPDATE agents SET telegram_id = NULL WHERE telegram_id = ?",
         (telegram_id,),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def unbind_admin_telegram_id(telegram_id: int):
+    """
+    قطع اتصال telegram_id فقط از ادمین
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "UPDATE admins SET telegram_id = NULL WHERE telegram_id = ?",
+        (telegram_id,),
+    )
+
+    conn.commit()
+    conn.close()
+    print(f"✅ Admin telegram_id {telegram_id} unbound")  # برای دیباگ
+
+
+def unbind_agent_telegram_id(telegram_id: int):
+    """
+    قطع اتصال telegram_id فقط از عامل
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "UPDATE agents SET telegram_id = NULL WHERE telegram_id = ?",
+        (telegram_id,),
+    )
+
+    conn.commit()
+    conn.close()
+    print(f"✅ Agent telegram_id {telegram_id} unbound")  # برای دیباگ
+
+
+# توابع مربوط به transactions
+def get_agent_balance(agent_id, currency="AFN"):
+    """دریافت موجودی عامل"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT balance 
+        FROM balances 
+        WHERE agent_id = ? AND currency = ?
+    """,
+        (agent_id, currency),
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    return row[0] if row else 0.0
+
+
+def check_sufficient_balance(agent_id, amount, currency="AFN"):
+    """چک کردن کافی بودن موجودی"""
+    balance = get_agent_balance(agent_id, currency)
+    return balance >= amount
+
+
+def update_agent_balance(agent_id, amount, currency="AFN"):
+    """
+    بروزرسانی موجودی عامل
+    amount: مقدار مثبت برای افزایش، منفی برای کاهش
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    # اول مطمئن شو رکورد وجود داره
+    cur.execute(
+        """
+        SELECT id FROM balances 
+        WHERE agent_id = ? AND currency = ?
+    """,
+        (agent_id, currency),
+    )
+
+    if not cur.fetchone():
+        # اگر رکورد وجود نداشت، ایجاد کن
+        cur.execute(
+            """
+            INSERT INTO balances (agent_id, currency, balance)
+            VALUES (?, ?, ?)
+        """,
+            (agent_id, currency, 0.0),
+        )
+
+    # حالا موجودی رو بروز کن
+    cur.execute(
+        """
+        UPDATE balances 
+        SET balance = balance + ?
+        WHERE agent_id = ? AND currency = ?
+    """,
+        (amount, agent_id, currency),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def create_transaction(transaction_data):
+    """
+    ایجاد حواله جدید
+    transaction_data: دیکشنری با کلیدهای مورد نیاز
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """
+            INSERT INTO transactions 
+            (transaction_code, agent_id, receiver_agent_id, sender_name, 
+             receiver_name, receiver_tazkira, amount, currency, commission, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                transaction_data["transaction_code"],
+                transaction_data["agent_id"],
+                transaction_data["receiver_agent_id"],
+                transaction_data.get("sender_name", "مشتری حضوری"),
+                transaction_data["receiver_name"],
+                transaction_data["receiver_tazkira"],
+                transaction_data["amount"],
+                transaction_data["currency"],
+                transaction_data["commission"],
+                transaction_data.get("status", "pending"),
+            ),
+        )
+
+        transaction_id = cur.lastrowid
+        conn.commit()
+
+        return transaction_id
+
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def get_agent_transactions(agent_id, limit=20):
+    """
+    دریافت حواله‌های یک عامل
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT 
+            t.id,
+            t.transaction_code,
+            t.receiver_name,
+            t.amount,
+            t.currency,
+            t.commission,
+            t.status,
+            t.created_at,
+            a.name as receiver_agent_name,
+            a.province as receiver_province
+        FROM transactions t
+        LEFT JOIN agents a ON t.receiver_agent_id = a.id
+        WHERE t.agent_id = ?
+        ORDER BY t.created_at DESC
+        LIMIT ?
+    """,
+        (agent_id, limit),
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows
+
+
+def get_transaction_by_code(transaction_code):
+    """
+    دریافت حواله با کد
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT 
+            t.*,
+            a1.name as sender_agent_name,
+            a2.name as receiver_agent_name,
+            a2.province as receiver_province
+        FROM transactions t
+        LEFT JOIN agents a1 ON t.agent_id = a1.id
+        LEFT JOIN agents a2 ON t.receiver_agent_id = a2.id
+        WHERE t.transaction_code = ?
+    """,
+        (transaction_code,),
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    return row
+
+
+def update_transaction_status(transaction_id, status):
+    """
+    بروزرسانی وضعیت حواله
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE transactions 
+        SET status = ?, 
+            completed_at = CASE WHEN ? = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END
+        WHERE id = ?
+    """,
+        (status, status, transaction_id),
     )
 
     conn.commit()
