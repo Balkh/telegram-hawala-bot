@@ -31,6 +31,48 @@ def require_admin(func):
     return wrapper
 
 
+def require_any_auth(func):
+    """اجازه دسترسی به ادمین یا عامل فعال"""
+    async def wrapper(update, context, *args, **kwargs):
+        user = update.effective_user
+        
+        # چک کردن ادمین
+        if "role" in context.user_data and context.user_data["role"] == "admin":
+            return await func(update, context, *args, **kwargs)
+            
+        admin = get_admin_by_telegram_id(user.id)
+        if admin:
+            context.user_data["role"] = "admin"
+            context.user_data["admin_id"] = admin["id"]
+            return await func(update, context, *args, **kwargs)
+            
+        # چک کردن عامل
+        if "role" in context.user_data and context.user_data["role"] == "agent":
+            return await func(update, context, *args, **kwargs)
+            
+        agent = get_agent_by_telegram_id(user.id)
+        if agent:
+            if not agent["is_active"]:
+                if update.callback_query:
+                    await update.callback_query.message.reply_text("⛔ حساب شما مسدود است")
+                elif update.message:
+                    await update.message.reply_text("⛔ حساب شما مسدود است")
+                return
+            context.user_data["role"] = "agent"
+            context.user_data["agent_id"] = agent["id"]
+            return await func(update, context, *args, **kwargs)
+            
+        # عدم دسترسی
+        text = "🔐 لطفاً وارد حساب خود شوید"
+        if update.callback_query:
+            await update.callback_query.message.reply_text(text)
+        elif update.message:
+            await update.message.reply_text(text)
+        return
+        
+    return wrapper
+
+
 def require_agent(func):
     async def wrapper(update, context, *args, **kwargs):
         user = update.effective_user

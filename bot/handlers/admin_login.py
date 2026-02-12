@@ -25,6 +25,10 @@ async def admin_login_username(update, context):
         await update.message.reply_text("⛔ حساب ادمین غیرفعال است")
         return ConversationHandler.END
 
+    if admin["telegram_id"] and not context.user_data.get("role"):
+        await update.message.reply_text("❌ این ادمین قبلاً در سیستم لاگین شده است.")
+        return ConversationHandler.END
+
     context.user_data["admin"] = admin
     await update.message.reply_text("🔑 پسورد را وارد کنید:")
     return ADMIN_PASSWORD

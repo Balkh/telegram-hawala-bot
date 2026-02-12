@@ -53,7 +53,8 @@ def init_db():
             agent_id INTEGER,
             currency TEXT,
             balance REAL DEFAULT 0,
-            FOREIGN KEY(agent_id) REFERENCES agents(id)
+            FOREIGN KEY(agent_id) REFERENCES agents(id),
+            UNIQUE(agent_id, currency)
         )
         """
     )
@@ -80,6 +81,36 @@ def init_db():
             FOREIGN KEY (receiver_agent_id) REFERENCES agents(id)
         )
     """
+    )
+
+    # جدول درخواست‌های افزایش موجودی (شارژ حساب)
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS balance_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER,
+            amount REAL,
+            currency TEXT,
+            receipt_photo_id TEXT,
+            status TEXT DEFAULT 'pending', -- pending, approved, rejected
+            admin_note TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            processed_at DATETIME,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+        """
+    )
+
+    # پاکسازی ارزهای تکراری (در صورت وجود)
+    cur.execute(
+        """
+        DELETE FROM balances 
+        WHERE id NOT IN (
+            SELECT MIN(id) 
+            FROM balances 
+            GROUP BY agent_id, currency
+        )
+        """
     )
 
     conn.commit()
@@ -131,6 +162,13 @@ def bind_admin_telegram_id(admin_id: int, telegram_id: int):
     conn = get_db()
     cur = conn.cursor()
 
+    # برای تست با یک اکانت تکی، آنبایند کردن را غیرفعال می‌کنیم
+    # cur.execute(
+    #     "UPDATE admins SET telegram_id = NULL WHERE telegram_id = ?",
+    #     (telegram_id,),
+    # )
+
+    # متصل کردن به ادمین جدید
     cur.execute(
         "UPDATE admins SET telegram_id = ? WHERE id = ?",
         (telegram_id, admin_id),
@@ -144,12 +182,21 @@ def get_agent_by_telegram_id(telegram_id):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(
-        "SELECT id, is_active FROM agents WHERE telegram_id = ?",
-        (telegram_id,),
-    )
+    cur.execute("SELECT * FROM agents WHERE telegram_id = ?", (telegram_id,))
     row = cur.fetchone()
     conn.close()
+
+    return row
+
+
+def get_agent_by_id(agent_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
+    row = cur.fetchone()
+    conn.close()
+
     return row
 
 
@@ -170,6 +217,13 @@ def bind_agent_telegram_id(agent_id: int, telegram_id: int):
     conn = get_db()
     cur = conn.cursor()
 
+    # برای تست با یک اکانت تکی، آنبایند کردن را غیرفعال می‌کنیم
+    # cur.execute(
+    #     "UPDATE agents SET telegram_id = NULL WHERE telegram_id = ?",
+    #     (telegram_id,),
+    # )
+
+    # متصل کردن به عامل جدید
     cur.execute(
         "UPDATE agents SET telegram_id = ? WHERE id = ?",
         (telegram_id, agent_id),
