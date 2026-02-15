@@ -25,7 +25,7 @@ def get_font(size=24):
     return ImageFont.load_default()
 
 def format_farsi(text):
-    """اصلاح نمایش متن فارسی برای Pillow"""
+    """اصلاح نمایش متن فارسی/پښتو برای Pillow"""
     if not text:
         return ""
     reshaped_text = reshape(str(text))

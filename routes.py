@@ -156,7 +156,7 @@ from bot.handlers.admin_login import (
 
 # common
 from bot.handlers.common import exit_menu
-from bot.handlers.start import start
+from bot.handlers.start import start, select_language
 
 # errors
 from bot.services.errors import global_error_handler
@@ -189,9 +189,17 @@ def register_routes(app):
 
     # ========= START =========
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.Regex("^(دری|پشتو|پښتو)$"), select_language))
     
     # هندلر مشترک برای دانلود گزارش اکسل (باید قبل از بقیه باشد)
-    app.add_handler(MessageHandler(filters.Regex("^📥 دانلود گزارش اکسل$"), smart_excel_report_dispatcher))
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                "^📥 (دانلود گزارش اکسل|د اکسل راپور ښکته کول)$"
+            ),
+            smart_excel_report_dispatcher,
+        )
+    )
 
     # ========= ADMIN ACTIONS =========
     # این بخش باید قبل از AGENT ACTIONS باشد تا تداخل دکمه‌ها (مثل "📥 دانلود گزارش اکسل") پیش نیاید
@@ -223,7 +231,10 @@ def register_routes(app):
     # ورود ادمین (انتقال به ابتدای هندلرها برای اولویت بالاتر)
     admin_login_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^👑 ورود ادمین$"), admin_login_start)
+            MessageHandler(
+                filters.Regex("^👑 (ورود ادمین|د ادمین ننوتل)$"),
+                admin_login_start,
+            )
         ],
         states={
             ADMIN_USERNAME: [
@@ -240,7 +251,10 @@ def register_routes(app):
     # ورود عامل (انتقال به ابتدای هندلرها برای اولویت بالاتر)
     agent_login_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^🔐 ورود عامل$"), agent_login_start)
+            MessageHandler(
+                filters.Regex("^🔐 (ورود عامل|د عامل ننوتل)$"),
+                agent_login_start,
+            )
         ],
         states={
             LOGIN_PHONE: [
@@ -386,10 +400,13 @@ def register_routes(app):
     app.add_handler(MessageHandler(filters.Regex("^🔍 جستجوی جدید$"), search_agents))
     
     # ========= AGENT ACTIONS =========
-    # ارسال حواله جدید
+    # ارسال حواله جدید / نوی حواله
     send_hawala_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^💸 ارسال حواله جدید$"), send_hawala_start)
+            MessageHandler(
+                filters.Regex("^💸 (ارسال حواله جدید|نوی حواله)$"),
+                send_hawala_start,
+            )
         ],
         states={
             SEND_RECEIVER_AGENT: [
@@ -424,9 +441,10 @@ def register_routes(app):
     # پیگیری حواله و پرداخت توسط عامل مقصد
     track_hawala_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(
-                filters.Regex("^🔍 پیگیری با کد حواله$"), track_transaction_start
-            )
+                MessageHandler(
+                    filters.Regex("^🔍 (پیگیری با کد حواله|د حوالې د کوډ په وسیله تعقیب)$"),
+                    track_transaction_start,
+                )
         ],
         states={
             TRACK_CODE: [
@@ -434,7 +452,9 @@ def register_routes(app):
             ],
             PAY_TRANSACTION_CODE: [
                 MessageHandler(
-                    filters.Regex("^(💵 پرداخت به گیرنده|🔙 بازگشت به منوی عامل)$"),
+                    filters.Regex(
+                        "^(💵 پرداخت به گیرنده|💵 د گیرنده تادیه|🔙 بازگشت به منوی عامل|🔙 د عامل منو ته ستنیدل)$"
+                    ),
                     pay_transaction_start,
                 )
             ],
@@ -452,13 +472,22 @@ def register_routes(app):
 
     # لیست و مدیریت حواله‌ها
     app.add_handler(
-        MessageHandler(filters.Regex("^📥 حواله‌های قابل پرداخت$"), list_payable_transactions)
+        MessageHandler(
+            filters.Regex("^📥 (حواله‌های قابل پرداخت|د تادیې وړ حوالې)$"),
+            list_payable_transactions,
+        )
     )
     app.add_handler(
-        MessageHandler(filters.Regex("^📋 حواله‌های من$"), list_my_transactions)
+        MessageHandler(
+            filters.Regex("^📋 (حواله‌های من|زما حوالې)$"),
+            list_my_transactions,
+        )
     )
     app.add_handler(
-        MessageHandler(filters.Regex("^🔄 بروزرسانی لیست$"), list_my_transactions)
+        MessageHandler(
+            filters.Regex("^🔄 (بروزرسانی لیست|لست نو کول)$"),
+            list_my_transactions,
+        )
     )
     app.add_handler(
         MessageHandler(filters.Regex("^📋 مشاهده همه حواله‌ها$"), list_my_transactions)
@@ -467,7 +496,9 @@ def register_routes(app):
     manage_pending_conv = ConversationHandler(
         entry_points=[
             MessageHandler(
-                filters.Regex("^✏️ مدیریت حواله‌های در انتظار$"),
+                filters.Regex(
+                    "^✏️ (مدیریت حواله‌های در انتظار|د تمه کې حوالو مدیریت)$"
+                ),
                 manage_pending_transactions_start,
             )
         ],
@@ -501,58 +532,147 @@ def register_routes(app):
     app.add_handler(manage_pending_conv)
     
     # ناوبری و گزارشات عامل
-    app.add_handler(MessageHandler(filters.Regex("^💰 موجودی و گزارش$"), balance_and_report_menu))
-    app.add_handler(MessageHandler(filters.Regex("^📊 نمایش گزارش کامل$"), show_full_report))
-    
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^💰 (موجودی و گزارش|بیلانس او راپور)$"),
+            balance_and_report_menu,
+        )
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^📊 (نمایش گزارش کامل|بشپړ راپور)$"),
+            show_full_report,
+        )
+    )
     app.add_handler(MessageHandler(filters.Regex("^🔙 بازگشت به منوی عامل$"), agent_menu))
     app.add_handler(MessageHandler(filters.Regex("^🎛 منوی عامل$"), agent_menu))
 
     # مدیریت موجودی
-    app.add_handler(MessageHandler(filters.Regex("^💵 مدیریت موجودی$"), balance_management_menu))
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^💵 (مدیریت موجودی|د بیلانس مدیریت)$"),
+            balance_management_menu,
+        )
+    )
     app.add_handler(MessageHandler(filters.Regex("^🔙 بازگشت$"), balance_management_menu))
 
     # افزایش/کاهش موجودی و ارز جدید
     increase_balance_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^➕ افزایش موجودی$"), increase_balance_start)],
+        entry_points=[
+            MessageHandler(
+                filters.Regex(
+                    "^➕ (افزایش موجودی|د بیلانس زیاتوالی)$"
+                ),
+                increase_balance_start,
+            )
+        ],
         states={
-            INCREASE_BALANCE_CURRENCY: [MessageHandler(filters.Regex("^(🇦🇫 AFN|🇺🇸 USD|🔙 بازگشت)$"), increase_balance_currency)],
-            INCREASE_BALANCE_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, increase_balance_amount)],
-            INCREASE_BALANCE_PHOTO: [MessageHandler(filters.PHOTO, increase_balance_photo)],
+            INCREASE_BALANCE_CURRENCY: [
+                MessageHandler(
+                    filters.Regex("^(🇦🇫 AFN|🇺🇸 USD|🔙 بازگشت)$"),
+                    increase_balance_currency,
+                )
+            ],
+            INCREASE_BALANCE_AMOUNT: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, increase_balance_amount
+                )
+            ],
+            INCREASE_BALANCE_PHOTO: [
+                MessageHandler(filters.PHOTO, increase_balance_photo)
+            ],
         },
-        fallbacks=[CommandHandler("start", start), MessageHandler(filters.Regex("^🔙 بازگشت"), balance_management_menu)],
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex("^🔙 بازگشت"), balance_management_menu),
+        ],
     )
     app.add_handler(increase_balance_conv)
 
     decrease_balance_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^➖ کاهش موجودی$"), decrease_balance_start)],
+        entry_points=[
+            MessageHandler(
+                filters.Regex(
+                    "^➖ (کاهش موجودی|د بیلانس کمول)$"
+                ),
+                decrease_balance_start,
+            )
+        ],
         states={
-            DECREASE_BALANCE_CURRENCY: [MessageHandler(filters.Regex("^(🇦🇫 AFN|🇺🇸 USD|🔙 بازگشت)$"), decrease_balance_currency)],
-            DECREASE_BALANCE_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, decrease_balance_amount)],
+            DECREASE_BALANCE_CURRENCY: [
+                MessageHandler(
+                    filters.Regex("^(🇦🇫 AFN|🇺🇸 USD|🔙 بازگشت)$"),
+                    decrease_balance_currency,
+                )
+            ],
+            DECREASE_BALANCE_AMOUNT: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, decrease_balance_amount
+                )
+            ],
         },
-        fallbacks=[CommandHandler("start", start), MessageHandler(filters.Regex("^🔙 بازگشت"), balance_management_menu)],
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex("^🔙 بازگشت"), balance_management_menu),
+        ],
     )
     app.add_handler(decrease_balance_conv)
 
     add_currency_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^💱 اضافه کردن ارز جدید$"), add_currency_start)],
+        entry_points=[
+            MessageHandler(
+                filters.Regex(
+                    "^💱 (اضافه کردن ارز جدید|نوی ارز اضافه کول)$"
+                ),
+                add_currency_start,
+            )
+        ],
         states={
-            ADD_CURRENCY_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_currency_confirm)],
+            ADD_CURRENCY_TYPE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, add_currency_confirm)
+            ],
         },
-        fallbacks=[CommandHandler("start", start), MessageHandler(filters.Regex("^🔙 بازگشت"), balance_management_menu)],
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(filters.Regex("^🔙 بازگشت"), balance_management_menu),
+        ],
     )
     app.add_handler(add_currency_conv)
 
     # خروج عامل
-    app.add_handler(MessageHandler(filters.Regex("^🚪 خروج از حساب عامل$"), agent_logout))
+    app.add_handler(
+        MessageHandler(
+            filters.Regex("^🚪 (خروج از حساب عامل|د عامل له حساب څخه وتل)$"),
+            agent_logout,
+        )
+    )
 
     # جستجوی پیشرفته عامل
     search_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex("^🔍 جستجوی پیشرفته$"), search_advanced_start)],
+        entry_points=[
+            MessageHandler(
+                filters.Regex("^🔍 (جستجوی پیشرفته|پرمختللې لټون)$"),
+                search_advanced_start,
+            )
+        ],
         states={
-            SEARCH_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_advanced_type)],
-            SEARCH_QUERY: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_advanced_results)],
+            SEARCH_TYPE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, search_advanced_type
+                )
+            ],
+            SEARCH_QUERY: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND, search_advanced_results
+                )
+            ],
         },
-        fallbacks=[CommandHandler("start", start), MessageHandler(filters.Regex("^🔙 بازگشت به منوی عامل$"), agent_menu)],
+        fallbacks=[
+            CommandHandler("start", start),
+            MessageHandler(
+                filters.Regex("^🔙 بازگشت به منوی عامل$"), agent_menu
+            ),
+        ],
     )
     app.add_handler(search_conv)
 
@@ -574,7 +694,12 @@ def register_routes(app):
     async def universal_back_handler(update, context):
         text = update.message.text.strip()
         
-        if text in ["🔙 بازگشت", "🔙 بازگشت به منوی ادمین", "🔙 بازگشت به منوی عامل"]:
+        if text in [
+            "🔙 بازگشت",
+            "🔙 بازگشت به منوی ادمین",
+            "🔙 بازگشت به منوی عامل",
+            "🔙 د عامل منو ته ستنیدل",
+        ]:
             # پاکسازی داده‌های موقت
             for key in ["current_step", "transfer_from_agent_id", "search_type", "login_agent_id"]:
                 context.user_data.pop(key, None)
@@ -589,7 +714,14 @@ def register_routes(app):
                 await start(update, context)
             return
     
-    app.add_handler(MessageHandler(filters.Regex("^(🔙 بازگشت|🔙 بازگشت به منوی ادمین|🔙 بازگشت به منوی عامل)$"), universal_back_handler))
+    app.add_handler(
+        MessageHandler(
+            filters.Regex(
+                "^(🔙 بازگشت|🔙 بازگشت به منوی ادمین|🔙 بازگشت به منوی عامل|🔙 د عامل منو ته ستنیدل)$"
+            ),
+            universal_back_handler,
+        )
+    )
 
     # ========= ADMIN SEARCH HANDLER - مخصوص جستجو =========
     # این هندلر فقط زمانی فعال می‌شود که در مرحله جستجو هستیم

@@ -3,10 +3,14 @@ from bot.services.database import (
     get_admin_by_telegram_id,
     get_agent_by_telegram_id,
 )
+from bot.services.localization import _
 
 
 async def start(update, context):
     user_id = update.effective_user.id
+
+    # زبان پیش‌فرض کاربر در این سشن
+    lang = context.user_data.get("lang", "fa")
 
     # بررسی نقش از طریق سشن (برای تست با اکانت مشترک)
     role = context.user_data.get("role")
@@ -28,19 +32,13 @@ async def start(update, context):
 
     # 👑 ادمین لاگین شده
     if admin and admin["is_active"]:
-        # منوی اصلی ادمین - بدون انتخاب
         from bot.handlers.admin import admin_menu
-        
-        # ارسال خوشامدگویی و سپس منوی کامل
         await update.message.reply_text("👑 خوش آمدید ادمین")
-        
-        # فراخوانی منوی کامل ادمین
         await admin_menu(update, context)
         return
 
     # 🎛 عامل لاگین شده
     if agent and agent["is_active"]:
-        # تنظیم اطلاعات در سشن اگر نیست
         if not context.user_data.get("agent_id"):
             context.user_data["agent_id"] = agent["id"]
             context.user_data["role"] = "agent"
@@ -50,13 +48,39 @@ async def start(update, context):
         await agent_menu(update, context)
         return
 
-    # 🔐 کاربر ناشناس
+    # 🔐 کاربر ناشناس - مرحله انتخاب زبان
     keyboard = [
-        ["👑 ورود ادمین"],
-        ["🔐 ورود عامل"],
+        [
+            _("buttons.fa", lang="fa"),
+            _("buttons.ps", lang="fa"),
+        ]
     ]
 
     await update.message.reply_text(
-        "🔐 لطفاً نوع ورود را انتخاب کنید:",
+        _("start.welcome", lang="fa"),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+    )
+
+
+async def select_language(update, context):
+    text = update.message.text.strip()
+
+    if text in ("دری",):
+        lang = "fa"
+    elif text in ("پشتو", "پښتو"):
+        lang = "ps"
+    else:
+        await update.message.reply_text("❌ زبان نامعتبر است، لطفاً دوباره انتخاب کنید.")
+        return
+
+    context.user_data["lang"] = lang
+
+    keyboard = [
+        [_("buttons.admin_login", lang=lang)],
+        [_("buttons.agent_login", lang=lang)],
+    ]
+
+    await update.message.reply_text(
+        _("login.choose_role", lang=lang),
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
     )
