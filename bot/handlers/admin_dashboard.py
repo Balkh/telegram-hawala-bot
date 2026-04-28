@@ -6,27 +6,39 @@ from datetime import datetime as dt
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import ConversationHandler
 import logging
+from openpyxl.chart import LineChart, BarChart, Reference
 
 from bot.services.database import get_db
 from bot.services.auth import require_admin
+from bot.handlers.agent import get_lang, _collect_future_obligations
+from bot.services.localization import _
 
 logger = logging.getLogger(__name__)
 
 
+# این فایل توابع اصلی داشبورد ادمین را مدیریت می‌کند:
+# - نمایش خلاصهٔ آماری سیستم برای ادمین
+# - تولید و دانلود گزارش کامل اکسل
+
+
 # =======================
-# 📈 داشبورد آماری پیشرفته
+# 📈 پرمختللې احصایوي ډشبورډ
 # =======================
 
 
 @require_admin
 async def dashboard_stats(update, context):
-    """داشبورد آماری پیشرفته"""
-    await update.message.reply_text("📈 در حال آماده‌سازی داشبورد آماری...")
-    
+    # محاسبه و نمایش داشبورد آماری پیشرفتهٔ سیستم برای ادمین
+    lang = get_lang(context)
+    if lang == "fa":
+        await update.message.reply_text("📈 در حال آماده‌سازی داشبورد آماری...")
+    else:
+        await update.message.reply_text("📈 د احصایوي ډشبورډ چمتو کول...")
+
     conn = get_db()
     cur = conn.cursor()
     
-    # آمار کلی
+    # ټول احصایې
     cur.execute("SELECT COUNT(*) FROM agents WHERE is_active = 1")
     active_agents = cur.fetchone()[0]
     
@@ -39,7 +51,7 @@ async def dashboard_stats(update, context):
     cur.execute("SELECT SUM(commission) FROM transactions WHERE status != 'cancelled'")
     total_commission = cur.fetchone()[0] or 0
     
-    # آمار ۷ روز گذشته
+    # ۷ ورځې تېره احصایې
     seven_days_ago = (dt.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
     cur.execute("""
         SELECT COUNT(*) FROM transactions 
@@ -53,7 +65,7 @@ async def dashboard_stats(update, context):
     """, (seven_days_ago,))
     last_7_days_amount = cur.fetchone()[0] or 0
     
-    # آمار ۳۰ روز گذشته
+    # ۳۰ ورځې تېره احصایې
     thirty_days_ago = (dt.now() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
     cur.execute("""
         SELECT COUNT(*) FROM transactions 
@@ -107,62 +119,88 @@ async def dashboard_stats(update, context):
     top_earners = cur.fetchall()
     
     conn.close()
-    
-    # ساخت داشبورد
-    dashboard = "📈 *داشبورد آماری پیشرفته*\n"
-    dashboard += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n"
-    
-    # آمار کلی
-    dashboard += "📊 *آمار کلی سیستم:*\n"
-    dashboard += f"   👥 عامل‌های فعال: {active_agents}\n"
-    dashboard += f"   📦 کل حواله‌ها: {total_transactions:,}\n"
-    dashboard += f"   💰 مجموع مبالغ: {total_amount:,.0f} افغانی\n"
-    dashboard += f"   💸 مجموع کارمزدها: {total_commission:,.0f} افغانی\n\n"
-    
-    # مقایسه دوره‌های زمانی
-    dashboard += "📅 *مقایسه دوره‌های زمانی:*\n"
-    dashboard += f"   🗓️ ۷ روز گذشته: {last_7_days_transactions:,} حواله ({last_7_days_amount:,.0f} افغانی)\n"
-    dashboard += f"   🗓️ ۳۰ روز گذشته: {last_30_days_transactions:,} حواله ({last_30_days_amount:,.0f} افغانی)\n"
-    
-    if last_7_days_transactions > 0:
-        avg_per_day = last_7_days_transactions / 7
-        dashboard += f"   📊 میانگین روزانه (۷ روز): {avg_per_day:.1f} حواله\n"
-    dashboard += "\n"
-    
-    # پرکارترین‌ها
-    if top_agents:
-        dashboard += "🏆 *پرکارترین عامل‌ها:*\n"
-        for i, (name, count, commission) in enumerate(top_agents, 1):
-            commission_text = f"{commission:,.0f}" if commission else "۰"
-            dashboard += f"   {i}. {name} - {count} حواله ({commission_text} افغانی)\n"
+
+    if lang == "fa":
+        dashboard = "📈 *داشبورد آماری پیشرفته*\n"
+        dashboard += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n"
+        dashboard += "📊 *آمار کلی سیستم:*\n"
+        dashboard += f"   👥 عامل‌های فعال: {active_agents}\n"
+        dashboard += f"   📦 کل حواله‌ها: {total_transactions:,}\n"
+        dashboard += f"   💰 مجموع مبالغ: {total_amount:,.0f} افغانی\n"
+        dashboard += f"   💸 مجموع کارمزدها: {total_commission:,.0f} افغانی\n\n"
+        dashboard += "📅 *مقایسه دوره‌های زمانی:*\n"
+        dashboard += f"   🗓️ ۷ روز گذشته: {last_7_days_transactions:,} حواله ({last_7_days_amount:,.0f} افغانی)\n"
+        dashboard += f"   🗓️ ۳۰ روز گذشته: {last_30_days_transactions:,} حواله ({last_30_days_amount:,.0f} افغانی)\n"
+        if last_7_days_transactions > 0:
+            avg_per_day = last_7_days_transactions / 7
+            dashboard += f"   📊 میانگین روزانه (۷ روز): {avg_per_day:.1f} حواله\n"
         dashboard += "\n"
-    
-    # کم‌کارترین‌ها
-    if least_active_agents:
-        dashboard += "📉 *کم‌کارترین عامل‌ها (فعال):*\n"
-        for i, (name, count) in enumerate(least_active_agents, 1):
-            dashboard += f"   {i}. {name} - {count} حواله\n"
+        if top_agents:
+            dashboard += "🏆 *فعال‌ترین عامل‌ها:*\n"
+            for i, (name, count, commission) in enumerate(top_agents, 1):
+                commission_text = f"{commission:,.0f}" if commission else "۰"
+                dashboard += f"   {i}. {name} - {count} حواله ({commission_text} افغانی)\n"
+            dashboard += "\n"
+        if least_active_agents:
+            dashboard += "📉 *کم‌کارترین عامل‌های فعال:*\n"
+            for i, (name, count) in enumerate(least_active_agents, 1):
+                dashboard += f"   {i}. {name} - {count} حواله\n"
+            dashboard += "\n"
+        if top_earners:
+            dashboard += "💰 *بالاترین سودآوری عامل‌ها:*\n"
+            for i, (name, commission, count) in enumerate(top_earners, 1):
+                dashboard += f"   {i}. {name} - {commission:,.0f} افغانی ({count} حواله)\n"
+            dashboard += "\n"
+        dashboard += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        dashboard += f"📅 به‌روزرسانی: {dt.now().strftime('%Y/%m/%d %H:%M')}"
+        keyboard = [
+            ["🔄 بروزرسانی داشبورد"],
+            ["💰 مدیریت مالی مرکزی"],
+            ["📥 دانلود گزارش اکسل", "🔙 بازگشت به منوی ادمین"],
+        ]
+    else:
+        dashboard = "📈 *پرمختللې احصایوي ډشبورډ*\n"
+        dashboard += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n"
+        dashboard += "📊 *د سيستم ټول احصایې:*\n"
+        dashboard += f"   👥 عامل‌های فعال: {active_agents}\n"
+        dashboard += f"   📦 کل حواله‌ها: {total_transactions:,}\n"
+        dashboard += f"   💰 مجموع مبالغ: {total_amount:,.0f} افغانی\n"
+        dashboard += f"   💸 مجموع کارمزدها: {total_commission:,.0f} افغانی\n\n"
+        dashboard += "📅 *د وختونو په پرتله کړنه:*\n"
+        dashboard += f"   🗓️ ۷ روز گذشته: {last_7_days_transactions:,} حواله ({last_7_days_amount:,.0f} افغانی)\n"
+        dashboard += f"   🗓️ ۳۰ روز گذشته: {last_30_days_transactions:,} حواله ({last_30_days_amount:,.0f} افغانی)\n"
+        if last_7_days_transactions > 0:
+            avg_per_day = last_7_days_transactions / 7
+            dashboard += f"   📊 میانگین روزانه (۷ روز): {avg_per_day:.1f} حواله\n"
         dashboard += "\n"
-    
-    # بیشترین درآمدزا
-    if top_earners:
-        dashboard += "💰 *بیشترین درآمدزاها:*\n"
-        for i, (name, commission, count) in enumerate(top_earners, 1):
-            dashboard += f"   {i}. {name} - {commission:,.0f} افغانی ({count} حواله)\n"
-        dashboard += "\n"
-    
-    dashboard += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-    dashboard += f"📅 به‌روزرسانی: {dt.now().strftime('%Y/%m/%d %H:%M')}"
-    
-    keyboard = [
-        ["🔄 بروزرسانی داشبورد", "📊 گزارش مالی"],
-        ["📥 دانلود گزارش اکسل", "🔙 بازگشت به منوی ادمین"]
-    ]
-    
+        if top_agents:
+            dashboard += "🏆 *تر فعالو عاملان:*\n"
+            for i, (name, count, commission) in enumerate(top_agents, 1):
+                commission_text = f"{commission:,.0f}" if commission else "۰"
+                dashboard += f"   {i}. {name} - {count} حواله ({commission_text} افغانی)\n"
+            dashboard += "\n"
+        if least_active_agents:
+            dashboard += "📉 *لږ فعالو عاملان (فعال):*\n"
+            for i, (name, count) in enumerate(least_active_agents, 1):
+                dashboard += f"   {i}. {name} - {count} حواله\n"
+            dashboard += "\n"
+        if top_earners:
+            dashboard += "💰 *تر ګټې لرونکي عاملان:*\n"
+            for i, (name, commission, count) in enumerate(top_earners, 1):
+                dashboard += f"   {i}. {name} - {commission:,.0f} افغانی ({count} حواله)\n"
+            dashboard += "\n"
+        dashboard += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+        dashboard += f"📅 نوول: {dt.now().strftime('%Y/%m/%d %H:%M')}"
+        keyboard = [
+            ["🔄 د ډشبورډ نو کول"],
+            ["💰 د مرکزي مالی مدیریت"],
+            ["📥 د اکسل راپور ښکته کول", "🔙 د ادمین مینو ته شاته"],
+        ]
+
     await update.message.reply_text(
         dashboard,
         parse_mode="Markdown",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
     )
 
 
@@ -173,13 +211,15 @@ async def dashboard_stats(update, context):
 
 @require_admin
 async def download_admin_excel_report(update, context):
-    """دانلود گزارش کامل اکسل برای ادمین"""
-    await update.message.reply_text("📥 در حال آماده‌سازی گزارش اکسل ادمین...")
+    # ساخت و ارسال فایل اکسل شامل اطلاعات عامل‌ها، تراکنش‌ها و آمار روزانه
+    lang = get_lang(context)
+    await update.message.reply_text(
+        _("admin.excel_preparing", lang=lang)
+    )
     
     conn = get_db()
     cur = conn.cursor()
     
-    # دریافت تمام اطلاعات عامل‌ها
     cur.execute("""
         SELECT a.id, a.name, a.province, a.phone, a.is_active,
                b.balance, b.currency,
@@ -194,7 +234,6 @@ async def download_admin_excel_report(update, context):
     """)
     agents_data = cur.fetchall()
     
-    # دریافت آمار حواله‌ها بر اساس روز
     cur.execute("""
         SELECT DATE(created_at) as date, COUNT(*) as count,
                SUM(amount) as total_amount, SUM(commission) as total_commission
@@ -206,7 +245,6 @@ async def download_admin_excel_report(update, context):
     """)
     daily_stats = cur.fetchall()
     
-    # دریافت آمار بر اساس ولایت
     cur.execute("""
         SELECT a.province, COUNT(t.id) as transaction_count,
                SUM(t.amount) as total_amount, SUM(t.commission) as total_commission
@@ -217,6 +255,52 @@ async def download_admin_excel_report(update, context):
         ORDER BY total_amount DESC
     """)
     province_stats = cur.fetchall()
+    
+    cur.execute(
+        """
+        SELECT a.id,
+               a.name,
+               a.province,
+               COALESCE(SUM(CASE WHEN b.currency = 'AFN' THEN b.balance END), 0) AS afn_balance
+        FROM agents a
+        LEFT JOIN balances b ON a.id = b.agent_id
+        WHERE a.is_active = 1
+        GROUP BY a.id, a.name, a.province
+        """
+    )
+    all_agents_balances = cur.fetchall()
+    
+    cur.execute(
+        """
+        SELECT agent_id, SUM(commission)
+        FROM transactions
+        WHERE status != 'cancelled'
+          AND DATE(created_at) >= DATE('now', '-30 day')
+          AND currency = 'AFN'
+        GROUP BY agent_id
+        """
+    )
+    commission_rows = cur.fetchall()
+    commission_map = {row[0]: float(row[1] or 0) for row in commission_rows}
+    
+    liquidity_rows = []
+    for agent_id, name, province, afn_balance in all_agents_balances:
+        obligations, obligations_end_date = _collect_future_obligations(agent_id, 30)
+        obligations_afn = sum(amount for _, _, amount, _ in obligations.get("AFN", []))
+        commissions_afn = commission_map.get(agent_id, 0.0)
+        projected = afn_balance + commissions_afn - obligations_afn
+        liquidity_rows.append(
+            [
+                agent_id,
+                name,
+                province,
+                float(afn_balance or 0),
+                float(obligations_afn or 0),
+                float(commissions_afn or 0),
+                float(projected or 0),
+                obligations_end_date.isoformat(),
+            ]
+        )
     
     conn.close()
     
@@ -250,12 +334,86 @@ async def download_admin_excel_report(update, context):
                 'تاریخ', 'تعداد حواله', 'مبلغ کل', 'کارمزد کل'
             ])
             daily_df.to_excel(writer, sheet_name='آمار روزانه', index=False)
-            
-            # شیت آمار ولایت‌ها
-            province_df = pd.DataFrame(province_stats, columns=[
-                'ولایت', 'تعداد حواله', 'مبلغ کل', 'کارمزد کل'
-            ])
+
+            province_rows = []
+            for province, tx_count, total_amount, total_commission in province_stats:
+                province_rows.append(
+                    [
+                        province or "نامشخص",
+                        int(tx_count or 0),
+                        float(total_amount or 0),
+                        float(total_commission or 0),
+                    ]
+                )
+
+            province_df = pd.DataFrame(
+                province_rows,
+                columns=['ولایت', 'تعداد حواله', 'مبلغ کل', 'کارمزد کل'],
+            )
             province_df.to_excel(writer, sheet_name='آمار ولایت‌ها', index=False)
+            
+            liquidity_df = pd.DataFrame(
+                liquidity_rows,
+                columns=[
+                    'کد عامل',
+                    'نام',
+                    'ولایت',
+                    'موجودی فعلی AFN',
+                    'تعهدات ۳۰ روز آینده AFN',
+                    'کمیسیون ۳۰ روز گذشته AFN',
+                    'پیش‌بینی نقدینگی AFN',
+                    'انتهای بازه تعهدات',
+                ],
+            )
+            liquidity_df.to_excel(writer, sheet_name='ریسک نقدینگی', index=False)
+
+            workbook = writer.book
+
+            if 'آمار روزانه' in workbook.sheetnames:
+                sheet_daily = workbook['آمار روزانه']
+                daily_chart = LineChart()
+                daily_chart.title = "روند تعداد حواله‌ها"
+                daily_chart.y_axis.title = "تعداد حواله"
+                daily_chart.x_axis.title = "تاریخ"
+                data = Reference(
+                    sheet_daily,
+                    min_col=2,
+                    max_col=2,
+                    min_row=1,
+                    max_row=sheet_daily.max_row,
+                )
+                daily_chart.add_data(data, titles_from_data=True)
+                cats = Reference(
+                    sheet_daily,
+                    min_col=1,
+                    min_row=2,
+                    max_row=sheet_daily.max_row,
+                )
+                daily_chart.set_categories(cats)
+                sheet_daily.add_chart(daily_chart, "F2")
+
+            if 'آمار ولایت‌ها' in workbook.sheetnames:
+                sheet_province = workbook['آمار ولایت‌ها']
+                province_chart = BarChart()
+                province_chart.title = "مبلغ کل حواله‌ها به تفکیک ولایت"
+                province_chart.y_axis.title = "مبلغ کل"
+                province_chart.x_axis.title = "ولایت"
+                data = Reference(
+                    sheet_province,
+                    min_col=3,
+                    max_col=3,
+                    min_row=1,
+                    max_row=sheet_province.max_row,
+                )
+                province_chart.add_data(data, titles_from_data=True)
+                cats = Reference(
+                    sheet_province,
+                    min_col=1,
+                    min_row=2,
+                    max_row=sheet_province.max_row,
+                )
+                province_chart.set_categories(cats)
+                sheet_province.add_chart(province_chart, "F2")
         
         output.seek(0)
         
@@ -273,96 +431,3 @@ async def download_admin_excel_report(update, context):
     except Exception as e:
         logger.exception("Error creating admin excel report")
         await update.message.reply_text(f"❌ خطا در ایجاد گزارش اکسل: {str(e)}")
-
-
-# =======================
-# 💸 پنل سود ادمین
-# =======================
-
-@require_admin
-async def admin_profit_panel(update, context):
-    """نمایش پنل سود ادمین بر اساس کمیسیون‌ها"""
-    await update.message.reply_text("💸 در حال محاسبه سود سیستم...")
-    
-    conn = get_db()
-    cur = conn.cursor()
-    
-    # سود کل بر اساس ارز
-    cur.execute("""
-        SELECT currency, SUM(commission) as total_profit, COUNT(*) as tx_count
-        FROM transactions
-        WHERE status != 'cancelled'
-        GROUP BY currency
-        ORDER BY total_profit DESC
-    """)
-    total_profits = cur.fetchall()
-    
-    # سود ۳۰ روز گذشته
-    thirty_days_ago = (dt.now() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
-    cur.execute("""
-        SELECT currency, SUM(commission) as monthly_profit
-        FROM transactions
-        WHERE status != 'cancelled' AND DATE(created_at) >= ?
-        GROUP BY currency
-    """, (thirty_days_ago,))
-    monthly_profits = {row[0]: row[1] for row in cur.fetchall()}
-    
-    # سود ۷ روز گذشته
-    seven_days_ago = (dt.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
-    cur.execute("""
-        SELECT currency, SUM(commission) as weekly_profit
-        FROM transactions
-        WHERE status != 'cancelled' AND DATE(created_at) >= ?
-        GROUP BY currency
-    """, (seven_days_ago,))
-    weekly_profits = {row[0]: row[1] for row in cur.fetchall()}
-    
-    # سود امروز
-    today = dt.now().strftime('%Y-%m-%d')
-    cur.execute("""
-        SELECT currency, SUM(commission) as daily_profit
-        FROM transactions
-        WHERE status != 'cancelled' AND DATE(created_at) >= ?
-        GROUP BY currency
-    """, (today,))
-    daily_profits = {row[0]: row[1] for row in cur.fetchall()}
-
-    conn.close()
-    
-    # ساخت متن پنل
-    text = "💸 *پنل سود و درآمد سیستم*\n"
-    text += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n\n"
-    
-    if not total_profits:
-        text += "📭 هنوز هیچ تراکنشی ثبت نشده است."
-    else:
-        for currency, total, count in total_profits:
-            text += f"💰 *ارز: {currency}*\n"
-            text += f"   📊 کل سود: {total:,.0f} {currency} ({count} حواله)\n"
-            
-            daily = daily_profits.get(currency, 0)
-            text += f"   📅 سود امروز: {daily:,.0f} {currency}\n"
-            
-            weekly = weekly_profits.get(currency, 0)
-            text += f"   🗓️ ۷ روز گذشته: {weekly:,.0f} {currency}\n"
-            
-            monthly = monthly_profits.get(currency, 0)
-            text += f"   🗓️ ۳۰ روز گذشته: {monthly:,.0f} {currency}\n"
-            text += "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-            
-    text += f"\n📅 آخرین بروزرسانی: {dt.now().strftime('%Y/%m/%d %H:%M')}"
-    
-    keyboard = [
-        ["🔄 بروزرسانی سود", "📊 گزارش مالی"],
-        ["🔙 بازگشت به منوی ادمین"]
-    ]
-    
-    # اضافه کردن دکمه بروزرسانی به context برای تشخیص در هندلرها اگر نیاز بود
-    # در اینجا از MessageHandler با Regex استفاده می‌کنیم
-    
-    await update.message.reply_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    )
-

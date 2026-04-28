@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
+import os
 import sqlite3
 import bcrypt
+import secrets
+import string
 
 
 def hash_password(password: str) -> str:
@@ -9,10 +12,15 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), salt).decode()
 
 
+def generate_strong_password(length: int = 16) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 def create_admin_once():
-    # اطلاعات ادمین (موقتی)
-    username = "admin"
-    password = "admin123"  # بعداً عوضش کن
+    # اطلاعات ادمین (ورودی از ENV یا پیش‌فرض امن)
+    username = os.getenv("INITIAL_ADMIN_USERNAME", "admin")
+    password = os.getenv("INITIAL_ADMIN_PASSWORD") or generate_strong_password()
     password_hash = hash_password(password)
 
     conn = sqlite3.connect("hawala.db")

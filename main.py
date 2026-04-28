@@ -5,6 +5,9 @@ from config import BOT_TOKEN
 
 
 def main():
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN is not set. Please configure BOT_TOKEN in environment or .env.")
+
     init_db()
 
     app = Application.builder().token(BOT_TOKEN).build()

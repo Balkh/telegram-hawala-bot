@@ -10,7 +10,7 @@ async def start(update, context):
     user_id = update.effective_user.id
 
     # زبان پیش‌فرض کاربر در این سشن
-    lang = context.user_data.get("lang", "fa")
+    lang = context.user_data.get("lang", "ps")
 
     # بررسی نقش از طریق سشن (برای تست با اکانت مشترک)
     role = context.user_data.get("role")

@@ -26,6 +26,14 @@ def init_db():
         """
     )
 
+    # اطمینان از وجود ستون‌های امنیتی برای ادمین
+    cur.execute("PRAGMA table_info(admins)")
+    admin_columns = [row["name"] for row in cur.fetchall()]
+    if "failed_attempts" not in admin_columns:
+        cur.execute("ALTER TABLE admins ADD COLUMN failed_attempts INTEGER DEFAULT 0")
+    if "locked_at" not in admin_columns:
+        cur.execute("ALTER TABLE admins ADD COLUMN locked_at TEXT")
+
     # جدول عامل‌ها
     cur.execute(
         """
@@ -101,6 +109,57 @@ def init_db():
         """
     )
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_expenses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER,
+            category TEXT,
+            amount REAL,
+            currency TEXT,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS staff_contracts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER,
+            employee_name TEXT,
+            monthly_salary REAL,
+            currency TEXT,
+            start_date TEXT,
+            pay_day_of_month INTEGER,
+            is_active INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fixed_expense_contracts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER,
+            name TEXT,
+            category TEXT,
+            amount REAL,
+            currency TEXT,
+            frequency TEXT,
+            start_date TEXT,
+            pay_day_of_month INTEGER,
+            is_active INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+        """
+    )
+
     # پاکسازی ارزهای تکراری (در صورت وجود)
     cur.execute(
         """
@@ -123,7 +182,18 @@ def get_admin_by_username(username):
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT id, password_hash, is_active, telegram_id FROM admins WHERE username = ?",
+        """
+        SELECT 
+            id,
+            username,
+            password_hash,
+            is_active,
+            telegram_id,
+            failed_attempts,
+            locked_at
+        FROM admins 
+        WHERE username = ?
+        """,
         (username,),
     )
     row = cur.fetchone()
@@ -172,6 +242,92 @@ def bind_admin_telegram_id(admin_id: int, telegram_id: int):
     cur.execute(
         "UPDATE admins SET telegram_id = ? WHERE id = ?",
         (telegram_id, admin_id),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_all_admins():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT 
+            id,
+            username,
+            is_active,
+            telegram_id,
+            failed_attempts,
+            locked_at
+        FROM admins
+        ORDER BY id ASC
+        """
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows
+
+
+def increase_admin_failed_attempts(admin_id: int):
+    """
+    افزایش شمارنده تلاش ناموفق برای ادمین
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE admins
+        SET failed_attempts = failed_attempts + 1
+        WHERE id = ?
+        """,
+        (admin_id,),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def reset_admin_failed_attempts(admin_id: int):
+    """
+    ریست شمارنده تلاش ناموفق و پاک کردن زمان قفل برای ادمین
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE admins
+        SET failed_attempts = 0,
+            locked_at = NULL
+        WHERE id = ?
+        """,
+        (admin_id,),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def lock_admin(admin_id: int):
+    """
+    قفل کامل حساب ادمین بعد از تلاش‌های ناموفق زیاد
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        UPDATE admins
+        SET is_active = 0,
+            locked_at = ?
+        WHERE id = ?
+        """,
+        (datetime.utcnow().isoformat(), admin_id),
     )
 
     conn.commit()
@@ -231,6 +387,24 @@ def bind_agent_telegram_id(agent_id: int, telegram_id: int):
 
     conn.commit()
     conn.close()
+
+
+def get_active_agents_with_telegram():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT id, name, telegram_id
+        FROM agents
+        WHERE is_active = 1 AND telegram_id IS NOT NULL
+        """,
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows
 
 
 def increase_failed_attempts(agent_id):
@@ -544,3 +718,155 @@ def update_transaction_status(transaction_id, status):
 
     conn.commit()
     conn.close()
+
+
+def create_agent_expense(agent_id, category, amount, currency, description=""):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO agent_expenses (agent_id, category, amount, currency, description)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (agent_id, category, amount, currency, description),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def create_staff_contract(
+    agent_id,
+    employee_name,
+    monthly_salary,
+    currency,
+    start_date,
+    pay_day_of_month,
+):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO staff_contracts (
+            agent_id,
+            employee_name,
+            monthly_salary,
+            currency,
+            start_date,
+            pay_day_of_month
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            agent_id,
+            employee_name,
+            monthly_salary,
+            currency,
+            start_date,
+            pay_day_of_month,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_staff_contracts_for_agent(agent_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT
+            id,
+            employee_name,
+            monthly_salary,
+            currency,
+            start_date,
+            pay_day_of_month,
+            is_active
+        FROM staff_contracts
+        WHERE agent_id = ?
+        ORDER BY employee_name
+        """,
+        (agent_id,),
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows
+
+
+def create_fixed_expense_contract(
+    agent_id,
+    name,
+    category,
+    amount,
+    currency,
+    frequency,
+    start_date,
+    pay_day_of_month,
+):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO fixed_expense_contracts (
+            agent_id,
+            name,
+            category,
+            amount,
+            currency,
+            frequency,
+            start_date,
+            pay_day_of_month
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            agent_id,
+            name,
+            category,
+            amount,
+            currency,
+            frequency,
+            start_date,
+            pay_day_of_month,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_fixed_expense_contracts_for_agent(agent_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT
+            id,
+            name,
+            category,
+            amount,
+            currency,
+            frequency,
+            start_date,
+            pay_day_of_month,
+            is_active
+        FROM fixed_expense_contracts
+        WHERE agent_id = ?
+        ORDER BY name
+        """,
+        (agent_id,),
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows

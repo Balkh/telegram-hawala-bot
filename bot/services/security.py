@@ -1,6 +1,7 @@
 # bot/services/security.py
 from bot.services.database import get_db
 import bcrypt
+import re
 
 
 def hash_password(password: str) -> str:
@@ -13,6 +14,26 @@ def verify_password(password: str, hashed: str) -> bool:
         return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
     except Exception:
         return False
+
+
+def validate_agent_password(password: str) -> bool:
+    if len(password) < 6:
+        return False
+    if not re.search(r"[A-Za-z]", password):
+        return False
+    if not re.search(r"\d", password):
+        return False
+    return True
+
+
+def validate_admin_password(password: str) -> bool:
+    if len(password) < 8:
+        return False
+    if not re.search(r"[A-Za-z]", password):
+        return False
+    if not re.search(r"\d", password):
+        return False
+    return True
 
 
 # 🔐 چک فعال بودن عامل
