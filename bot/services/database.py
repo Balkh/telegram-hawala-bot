@@ -67,6 +67,9 @@ def init_db():
         """
     )
 
+    # 🚀 ایندکس‌ها برای سرعت بیشتر (سئو/سش دیتابیس)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_balances_agent_id ON balances(agent_id)")
+
     # جدول حواله‌ها
     cur.execute(
         """
@@ -90,6 +93,17 @@ def init_db():
         )
     """
     )
+
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_transactions_agent_id ON transactions(agent_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_transactions_receiver_agent_id ON transactions(receiver_agent_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(transaction_code)")
+
+    # 🚀 ایندکس‌های تکمیلی برای کارایی بیشتر
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_balance_requests_agent_id ON balance_requests(agent_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_expenses_agent_id ON agent_expenses(agent_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_staff_contracts_agent_id ON staff_contracts(agent_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_fixed_expense_contracts_agent_id ON fixed_expense_contracts(agent_id)")
 
     # جدول درخواست‌های افزایش موجودی (شارژ حساب)
     cur.execute(
@@ -361,7 +375,7 @@ def get_agent_by_phone(phone):
     cur = conn.cursor()
 
     cur.execute(
-        "SELECT id, password_hash, telegram_id, is_active FROM agents WHERE phone = ?",
+        "SELECT id, password_hash, telegram_id, is_active, failed_attempts FROM agents WHERE phone = ?",
         (phone,),
     )
     row = cur.fetchone()

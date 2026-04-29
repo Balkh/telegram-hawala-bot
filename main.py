@@ -14,7 +14,7 @@ def main():
 
     register_routes(app)
 
-    print("🤖 Hawala Bot is running ...")
+    print("🤖 Hawala Bot is running ...", flush=True)
     app.run_polling()
 
 
